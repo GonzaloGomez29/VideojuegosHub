@@ -1,0 +1,55 @@
+# ----------------------------------------------------------------------------
+# Release Workflow
+# Crea una GitHub Release cada vez que se sube un tag de versión semántica
+# (vMAJOR.MINOR.PATCH) que apunte a un commit de la rama main.
+# ----------------------------------------------------------------------------
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+
+    steps:
+
+      # Step 1: Checkout con todo el historial
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      # Step 2: El tag debe seguir el formato semántico vX.Y.Z
+      - name: Validar formato del tag
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::El tag '$TAG' no sigue el formato vMAJOR.MINOR.PATCH"
+            exit 1
+          fi
+
+      # Step 3: El tag solo puede ponerse sobre commits que estén en main
+      - name: Comprobar que el tag está en main
+        run: |
+          git fetch origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::El tag ${GITHUB_REF_NAME} no apunta a un commit de main"
+            exit 1
+          fi
+
+      # Step 4: Crear la Release con notas generadas a partir de los commits
+      - name: Crear GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes \
+            --verify-tag
